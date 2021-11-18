@@ -19,11 +19,20 @@ import {
 } from '@loopback/rest';
 import {Usuario} from '../models';
 import {UsuarioRepository} from '../repositories';
+import {service} from '@loopback/core';
+import {AuthService} from '../services';
+import axios from 'axios';
+import {Credenciales} from '../models';
+import { HttpErrors} from '@loopback/rest';
+import {authenticate} from '@loopback/authentication';
 
+@authenticate("admin")
 export class UsuarioController {
   constructor(
     @repository(UsuarioRepository)
     public usuarioRepository : UsuarioRepository,
+    @service(AuthService)
+    public servicioAuth: AuthService
   ) {}
 
   @post('/usuarios')
@@ -44,7 +53,36 @@ export class UsuarioController {
     })
     usuario: Omit<Usuario, 'id'>,
   ): Promise<Usuario> {
-    return this.usuarioRepository.create(usuario);
+     //Nuevo
+     let clave = this.servicioAuth.GenerarClave();
+     let claveCifrada = this.servicioAuth.CifrarClave(clave);
+     usuario.password = claveCifrada;
+     let p = await this.usuarioRepository.create(usuario);
+
+     // Notificamos al usuario por correo
+    let destino = usuario.correo;
+    let asunto = 'Registro de usuario en plataforma';
+    let contenido = `Hola, ${usuario.nombre} ${usuario.apellidos} su contraseña en el portal es: ${clave}`
+    axios({
+      method: 'post',
+      url: 'http://localhost:5000/send_email',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      data: {
+        destino: destino,
+        asunto: asunto,
+        contenido: contenido
+      }
+    }).then((data: any) => {
+      console.log(data)
+    }).catch((err: any) => {
+      console.log(err)
+    })
+
+  
+    return p;
   }
 
   @get('/usuarios/count')
@@ -147,4 +185,36 @@ export class UsuarioController {
   async deleteById(@param.path.string('id') id: string): Promise<void> {
     await this.usuarioRepository.deleteById(id);
   }
+
+   //Servicio de login
+  @authenticate.skip()
+  @post('/login', {
+    responses: {
+      '200': {
+        description: 'Identificación de usuarios'
+      }
+    }
+  })
+  async login(
+    @requestBody() credenciales: Credenciales
+  ) {
+    let p = await this.servicioAuth.IdentificarPersona(credenciales.usuario, credenciales.password);
+    if (p) {
+      let token = this.servicioAuth.GenerarTokenJWT(p);
+ 
+      return {
+        status: "success",
+        data: {
+          nombre: p.nombre,
+          apellidos: p.apellidos,
+          correo: p.correo,
+          id: p.id
+        },
+        token: token
+      }
+    } else {
+      throw new HttpErrors[401]("Datos invalidos")
+    }
+  }
+
 }
