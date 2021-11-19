@@ -13,7 +13,7 @@ const jwt = require('jsonwebtoken');
 @injectable({scope: BindingScope.TRANSIENT})
 export class AuthService {
   constructor(@repository(UsuarioRepository)
-  public usuarioRepository: UsuarioRepository) {}
+  public usuarioRepository: UsuarioRepository,) {}
 
    //Generacion de claves
    GenerarClave() {
@@ -61,4 +61,4 @@ validarTokenJWT(token: string) {
     }
   }
 
-}
+} 
